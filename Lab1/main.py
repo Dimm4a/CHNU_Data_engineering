@@ -10,4 +10,4 @@ os.environ['PYSPARK_DRIVER_PYTHON'] = sys.executable
 # Ініціалізація SparkSession
 spark = SparkSession.builder.appName("lab1de").getOrCreate()
 # читаємо файл
-#df_git = spark.read.json("10K.github.jsonl")
+df_git = spark.read.json("10K.github.jsonl")
