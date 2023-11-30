@@ -44,6 +44,7 @@ result_df.printSchema()
 #result_df.show()
 print("5")
 
-#result_df.to
-#result_df.toPandas().to_csv("output_file.csv", index=False)
+#
+#result_df.toPandas()#.to_csv("output_file.csv", index=False)
+#result_df.write.option("header",True).csv("output_file.csv")
 print("6")
