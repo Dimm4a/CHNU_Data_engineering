@@ -2,49 +2,67 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, udf, explode
 from pyspark.sql.types import StringType,ArrayType
-import os,sys
+import os #,sys
+from re import sub
 
-os.environ['PYSPARK_PYTHON'] = sys.executable
-os.environ['PYSPARK_DRIVER_PYTHON'] = sys.executable
-#os.environ['JAVA_HOME'] = ""
+#os.environ['PYSPARK_PYTHON'] = sys.executable
+#os.environ['PYSPARK_DRIVER_PYTHON'] = sys.executable
 os.environ['SPARK_LOCAL_IP'] = '127.0.1.1'
 
-# функція повертатиме масив де перший елемент це ім'я автора,
-# а інші 3 елементи формуються за алгоритмом 3gram (check wiki)
-def process_commit_message(commit_message:str):
+def processing_message(commit_message:str): # Обробка тексту комітів
+    # фільтруємо текст від зайвих символів
+    commit_message = commit_message.lower()
+    commit_message = sub("[!?.,/=+_<>{}#$'`~|*&()^%@:]", ' ', commit_message)
+    commit_message = commit_message.replace('"',' ')
+    commit_message = commit_message.replace('-',' ')
+    #commit_message = commit_message.replace(r"\\", "")
+    commit_message = commit_message.replace('[',' ')
+    commit_message = commit_message.replace(']',' ')
+    commit_message = commit_message.replace('   ',' ')
+    commit_message = commit_message.replace('  ',' ')
+    commit_message = commit_message.replace('\n',' ')
+    commit_message = commit_message.replace('\t',' ')
+    commit_message = commit_message.replace('\\',' ')
+    commit_message = commit_message.rstrip().lstrip()
+
+    # Ділимо текст на окремі слова, кожне з яких обрізаємо до перших трьох символів
     words = commit_message.split(" ")[:5]
-    combinations = [words[i:i+3] for i in range(3)]
-    return [" ".join(combination) for combination in combinations]
-print("1")
-# Ініціалізація SparkSession
+    temp = []
+    for word in words:
+        temp.append(word[:3])
+    words = temp
+    collections = [words[i:i+3] for i in range(3)]
+
+    return [" ".join(collection) for collection in collections]
+
+# Ініціалізація сесії Spark
 spark = SparkSession.builder.appName("lab1de").getOrCreate()
-# читаємо файл
-df_git = spark.read.json("10K.github.jsonl")
-print("2")
 
-# Відфільтруємо записи, де type = 'PushEvent'
-filtered_df = df_git.filter(df_git['type'] == 'PushEvent')
+# Імпортуємо дані з файлу
+df = spark.read.json("10K.github.jsonl")
+
+# Фільтруємо рядки за значенням типу PushEvent
+df = df.where(df['type'] == 'PushEvent')
+
 # вибираємо з payload всі commits
-df_commits = filtered_df.select(explode("payload.commits").alias("commit"))
-# вибираємо в першу колонку датасету ім'я автора а в другу повідомлення
-df_author_message = df_commits.select("commit.author.name", "commit.message")
-print("3")
+df = df.select(explode("payload.commits").alias("commit"))
 
-result_df = df_author_message
+# вибираємо в першу колонку ім'я автора а в другу повідомлення
+df = df.select("commit.author.name", "commit.message")
+
 for i in range(3):
-    # добавляємо новий стовбець "3_grams" який буде заповнюватись з допомогою функції process_commit_message
-    my_udf = udf(process_commit_message, ArrayType(StringType()))
-    result_df = result_df.withColumn("3_grams_"+str(i), (my_udf(col("message")))[i])
+    # додаємо новий стовбець "3_grams_N" який буде заповнюватись за допомогою функції processing_message
+    my_udf = udf(processing_message, ArrayType(StringType()))
+    df = df.withColumn("3_grams_"+str(i), my_udf(col("message"))[i])
 
-result_df = result_df.drop("message")
-print("4")
+# Видаляємо зайвий стовбець
+df = df.drop("message")
 
-# Виведення схеми та перших кількох рядків
-result_df.printSchema()
-#result_df.show()
-print("5")
+# Виведення схеми та декількох перших рядків
+df.printSchema()
+df.show()
 
-#
-#result_df.toPandas()#.to_csv("output_file.csv", index=False)
-#result_df.write.option("header",True).csv("output_file.csv")
-print("6")
+# Записуємо результат у csv файл
+df.toPandas().to_csv("output_file.csv", index=False)
+#df.write.csv("output_file2.csv")
+#df.write.option("header",True).csv("output_file.csv")
