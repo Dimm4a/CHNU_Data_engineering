@@ -85,18 +85,23 @@ def processing_files(file_list, cursor):
         print(f"\nProcessing file <{file_path}>...")
         with open(file_path, "r") as file:
             csv_reader = csv.reader(file)
-            #header = list(csv_reader)[0]
-            data = list(csv_reader)#[1:]
-            #csv_header = list(csv.reader(file))[0]
-            #print(header)
-            print(data[0])
-            print(data[1:])
-            #csv_reader = list(csv.reader(file))[1:]
-            #
-            #
-            #print(csv_reader)
-            #for row in csv_reader:
-            #    print(', '.join(row))
+            data = list(csv_reader)
+            header_array = data[0]
+            table_data_array = data[1:]
+            #print(header_array)
+            #print(table_data_array)
+
+            header = ', '.join(header_array)
+            print(header)
+
+            for row in table_data_array:
+                row_data = ', '.join(row)
+                print(row_data)
+                if cursor:
+                    cursor.executemany('''
+                        INSERT INTO %s (%s)
+                        VALUES (%s)''', (table_name, (header,), (row_data,)))
+
 def main():
 
     file_list = find_files(root_dir, file_type)
