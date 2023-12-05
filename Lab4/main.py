@@ -45,13 +45,17 @@ def db_init():
         conn = psycopg2.connect(host=host, database=database, user=user, password=pas)
         cursor = conn.cursor()
         db = True
-        return
+        return cursor, conn
     except:
-        print("It is problem with connection to database")
+        print("\nIt is problem with connection to database")
+        return None, None
 
-    # your code here
+def clear_db_data(file_list, cursor):
+    for file_path in file_list:
+        table_name = base_name(file_path)
+        cursor.execute('DROP TABLE IF EXISTS %s', table_name)
 
-def db_close():
+def db_close(conn, cursor):
     # Make the changes to the database persistent
     conn.commit()
 
@@ -59,6 +63,40 @@ def db_close():
     cursor.close()
     conn.close()
 
+def execute_scripts(script_list, cursor):
+    for script_path in script_list:
+        with open(script_path, 'r') as file:
+            print(f"Executing script: <{script_path}>...")
+            db_script = file.read()
+            cursor.execute(db_script)
+            print("Done")
+    print("Tables are created")
+
+def check_data(file_list, cursor):
+    for file_path in file_list:
+        table_name = base_name(file_path)
+        print(f"\nData from table in db: {table_name}")
+        cursor.execute('SELECT * FROM %s', table_name)
+        print(cursor.fetchall())
+
+def processing_files(file_list, cursor):
+    for file_path in file_list:
+        table_name = base_name(file_path)
+        print(f"\nProcessing file <{file_path}>...")
+        with open(file_path, "r") as file:
+            csv_reader = csv.reader(file)
+            #header = list(csv_reader)[0]
+            data = list(csv_reader)#[1:]
+            #csv_header = list(csv.reader(file))[0]
+            #print(header)
+            print(data[0])
+            print(data[1:])
+            #csv_reader = list(csv.reader(file))[1:]
+            #
+            #
+            #print(csv_reader)
+            #for row in csv_reader:
+            #    print(', '.join(row))
 def main():
 
     file_list = find_files(root_dir, file_type)
@@ -69,23 +107,21 @@ def main():
     check_scripts(file_list, script_list)
 
     db = False
-    db_init()
+    cursor, conn = db_init()
+    if db:
+        clear_db_data(file_list, cursor)
+        execute_scripts(script_list, cursor)
 
-    for filename in file_list:
-        print(f"\nProcessing file <{filename}>...")
-
-        #cursor.execute("DROP TABLE IF EXISTS %s", basename)
-
-        with open(filename, "r") as f:
-            csv_reader = list(csv.reader(f))[1:]
-            #csv_reader = csv.reader(f)
-            print(csv_reader)
-            #for row in csv_reader:
-            #    print(', '.join(row))
+    processing_files(file_list, cursor)
 
     if db:
-        db_close()
-    print("\nSuccess")
+        check_data(file_list, cursor)
+        clear_db_data(file_list, cursor)
+        db_close(conn, cursor)
+        print("\nSuccess")
+    else:
+        print("\nThe end")
+
 
 if __name__ == "__main__":
     main()
