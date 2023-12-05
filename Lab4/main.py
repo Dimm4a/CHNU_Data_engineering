@@ -48,7 +48,7 @@ def db_init():
         return cursor, conn
     except:
         print("\nIt is problem with connection to database")
-        return None, None
+        return False, False
 
 def clear_db_data(file_list, cursor):
     for file_path in file_list:
