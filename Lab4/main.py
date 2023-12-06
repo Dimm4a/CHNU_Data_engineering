@@ -13,11 +13,12 @@ def find_files(dir, type):
 def base_name(path):
     basename = path.split('.')[0]
     basename = basename.split('\\')[-1]
+    basename = basename.split('/')[-1] # Щоб працювало на різних системах з різними символами розділення в шляху до каталогів
     return basename
 
 def check_scripts(file_list, script_list):
     print()
-    changes = False
+    indexes = []
     i = -1
     for file_path in file_list:
         file_basename = base_name(file_path)
@@ -29,10 +30,12 @@ def check_scripts(file_list, script_list):
                 match = True
                 break
         if not match:
-            changes = True
-            file_list.pop(i)
+            indexes.append(i)
             print(f"There is no script for file <{file_path}>. It was removed from list")
-    if changes:
+    if len(indexes) != 0:
+        indexes.reverse()
+        for i in indexes:
+            file_list.pop(i)
         print(f"Final file list to processing:\n{file_list}")
 
 def db_init():
@@ -41,19 +44,23 @@ def db_init():
     user = "postgres"
     pas = "postgres"
 
+    db = False
     try:
         conn = psycopg2.connect(host=host, database=database, user=user, password=pas)
         cursor = conn.cursor()
         db = True
-        return cursor, conn
+        print("DB Ok")
+        return cursor, conn, db
     except:
         print("\nIt is problem with connection to database")
-        return False, False
+        return False, False, db
 
 def clear_db_data(file_list, cursor):
     for file_path in file_list:
         table_name = base_name(file_path)
-        cursor.execute('DROP TABLE IF EXISTS %s', table_name)
+        message = f'DROP TABLE IF EXISTS {table_name} CASCADE'
+        cursor.execute(message)
+        print(f"Table <{table_name}> is deleted")
 
 def db_close(conn, cursor):
     # Make the changes to the database persistent
@@ -76,7 +83,8 @@ def check_data(file_list, cursor):
     for file_path in file_list:
         table_name = base_name(file_path)
         print(f"\nData from table in db: {table_name}")
-        cursor.execute('SELECT * FROM %s', table_name)
+        message = f'SELECT * FROM {table_name}'
+        cursor.execute(message)
         print(cursor.fetchall())
 
 def processing_files(file_list, cursor):
@@ -95,12 +103,18 @@ def processing_files(file_list, cursor):
             print(header)
 
             for row in table_data_array:
-                row_data = ', '.join(row)
+                temp_row = []
+                for item in row:
+                    temp_row.append("'" + item + "'")
+                row_data = ', '.join(temp_row)
+                #row_data = row
                 print(row_data)
+
                 if cursor:
-                    cursor.executemany('''
-                        INSERT INTO %s (%s)
-                        VALUES (%s)''', (table_name, (header,), (row_data,)))
+                    message = f'INSERT INTO {table_name} ({header}) \nVALUES ({row_data})'
+                    print(message)
+                    cursor.execute(message)
+
 
 def main():
 
@@ -112,13 +126,13 @@ def main():
     check_scripts(file_list, script_list)
 
     db = False
-    cursor, conn = db_init()
+    cursor, conn, db = db_init()
+
     if db:
         clear_db_data(file_list, cursor)
         execute_scripts(script_list, cursor)
 
     processing_files(file_list, cursor)
-
     if db:
         check_data(file_list, cursor)
         clear_db_data(file_list, cursor)
