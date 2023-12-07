@@ -13,6 +13,8 @@ import glob
 import os
 import shutil
 
+from pyspark.sql.functions import *
+
 data_dir = 'data'
 temp_dir = 'temp'
 archive_type = 'zip'
@@ -59,6 +61,12 @@ def main():
         df[-1].show()
     #df.printSchema()
 
+    #df[0].groupby('from_station_name').avg().show()
+    ##df[0].select(col(start_time) 'date', df[0].start_time).show()
+
+    df[0].select(col("start_time"),
+              to_date(col("start_time")).alias("date"),
+              ).groupby('date').avg().show()
 
     #clear(temp_dir)
 
