@@ -45,6 +45,7 @@ def main():
     clear(temp_dir)
     mkdir(temp_dir)
     mkdir(reports_dir)
+
     file_list = find_files(data_dir, archive_type)
     print(file_list)
     for file_name in file_list:
