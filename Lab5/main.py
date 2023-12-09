@@ -16,6 +16,7 @@ from pyspark.sql.functions import *
 from pyspark.sql.types import IntegerType, StringType
 from pyspark.sql.window import Window
 
+
 data_dir = 'data'
 temp_dir = 'temp'
 archive_type = 'zip'
@@ -42,11 +43,10 @@ def mkdir(dir):
             os.makedirs(dir)
             print(f"Папку {dir} створено")
 
-def main():
-    spark = SparkSession.builder.appName("Exercise6").enableHiveSupport().getOrCreate()
-    # your code here
+def find_load_data_from_archives(data_dir, archive_type, file_type, sparksession):
     clear(temp_dir)
     mkdir(temp_dir)
+    clear(reports_dir)
     mkdir(reports_dir)
 
     file_list = find_files(data_dir, archive_type)
@@ -58,13 +58,97 @@ def main():
 
     df = []
     for file in file_list:
-        df.append(spark.read.option("header", True).csv(file))
+        df.append(sparksession.read.option("header", True).csv(file))
         #df[-1].show()
         #df[-1].printSchema()
+    #clear(temp_dir)
+    return df
+
+def write_csv(df, name):
+    dir = reports_dir
+    extension = file_type
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+    path = os.path.join(dir, name + '.' + extension)
+    print(path)
+    df = df.toPandas()
+    df.to_csv(path, index=False)
+    #df.write.options(header='True', delimiter=',').csv(path)
+    #df.write.mode('overwrite').options(header='True', delimiter=',').csv(path)
+
+def task_1(merged_df):
+    print("\n1. Яка «середня» тривалість поїздки на день?")
+    temp = merged_df.groupby('date').avg('tripduration').sort('date', ascending=True)
+    task1 = temp.withColumnRenamed('avg(tripduration)', 'Average trip duration')
+    task1.show()
+    task1_average = temp.select(avg('avg(tripduration)')).withColumnRenamed('avg(avg(tripduration))', 'Average trip duration')
+    task1_average.show()
+
+    write_csv(task1, 'task1')
+
+def task_2(merged_df):
+    print("\n2. Скільки поїздок було здійснено кожного дня?")
+    task2 = merged_df.groupby('date').count().sort('date', ascending=True)
+    task2.show()
+
+    write_csv(task2, 'task2')
+
+def task_3(merged_df):
+    print("\n3. Яка була найпопулярніша початкова станція для кожного місяця?")
+    task3 = merged_df.withColumn('month', date_format(col('date'), 'yyyy-MM'))
+    #task3 = task3.drop('end_station_name', 'gender', 'age', 'tripduration', 'date')
+    group_cols = ["month", "start_station_name"]
+    task3 = task3.groupBy(group_cols).count().sort('count', ascending=False)
+    window = Window.partitionBy("month").orderBy(col('count').desc())
+    task3 = task3.withColumn("row", row_number().over(window)).filter(col("row") == 1).drop("row", "count")
+    task3.show()
+
+    write_csv(task3, 'task3')
+
+def task_4(merged_df):
+    print("\n4. Які станції входять у трійку лідерів станцій для поїздок кожного дня протягом останніх двох тижнів?")
+    today = '2020-04-01'
+    date_interval = 14
+    task4 = merged_df.where(col("date") >= today - expr(f"INTERVAL {date_interval} days"))
+
+    task4 = task4.groupby('end_station_name').count().sort('count', ascending=False).drop('count').limit(3)
+    task4 = task4.withColumnRenamed('end_station_name', 'Top 3 stations for trip last 2 weeks')
+    task4.show()
+
+    write_csv(task4, 'task4')
+
+def task_5(merged_df):
+    print("\n5. Чоловіки чи жінки їздять довше в середньому?")
+    task5 = merged_df.groupby('gender').avg('tripduration').filter(col('gender') != 'NULL').sort('avg(tripduration)', ascending=False)
+    task5.show()
+
+    write_csv(task5, 'task5')
+
+def task_6(merged_df):
+    print("\n6. Який вік людей входить у десятку лідерів, хто подорожує найдовше та найкоротше?")
+    temp_df = merged_df.groupby('age').avg('tripduration').filter(col('age') > 0).sort('avg(tripduration)', ascending=False)
+    task6_more = temp_df.limit(10).drop('avg(tripduration)')
+    task6_more = task6_more.withColumnRenamed('age', 'Top 10 ages triping more time')
+    task6_more.show()
+    write_csv(task6_more, 'task6_more')
+
+    temp_df = temp_df.sort('avg(tripduration)', ascending=True)
+    task6_less = temp_df.limit(10).drop('avg(tripduration)')
+    task6_less = task6_less.withColumnRenamed('age', 'Top 10 ages triping less time')
+    task6_less.show()
+
+    write_csv(task6_less, 'task6_less')
+
+def main():
+    spark = SparkSession.builder.appName("Exercise6").enableHiveSupport().getOrCreate()
+    # your code here
+    df = find_load_data_from_archives(data_dir, archive_type, file_type, spark)
 
     # Видаляю зайві колонки, які не потрібні мені для поточного завдання
     df[0] = df[0].drop('trip_id', 'bikeid', 'tripduration', 'from_station_id', 'to_station_id', 'usertype')
     df[1] = df[1].drop('ride_id', 'rideable_type', 'start_station_id', 'end_station_id', 'start_lat', 'start_lng', 'end_lat', 'end_lng', 'member_casual')
+
+
 
     # Приводжу назви колонок до однакових
     df[0] = df[0].withColumnRenamed("from_station_name", "start_station_name")
@@ -98,54 +182,24 @@ def main():
     #merged_df.show()
 
 
-    """
 
     # 1. Яка «середня» тривалість поїздки на день?
-    print("\n1. Яка «середня» тривалість поїздки на день?")
-    task1 = merged_df.groupby('date').avg('tripduration').sort('date', ascending=True)
-    task1.show()
+    task_1(merged_df)
 
     # 2. Скільки поїздок було здійснено кожного дня?
-    print("\n2. Скільки поїздок було здійснено кожного дня?")
-    task2 = merged_df.groupby('date').count().sort('date', ascending=True)
-    task2.show()
+    task_2(merged_df)
 
     # 3. Яка була найпопулярніша початкова станція для кожного місяця?
-    print("\n3. Яка була найпопулярніша початкова станція для кожного місяця?")
-    task3 = merged_df.withColumn('month', date_format(col('date'), 'yyyy-MM'))
-    #task3 = task3.drop('end_station_name', 'gender', 'age', 'tripduration', 'date')
-    group_cols = ["month", "start_station_name"]
-    task3 = task3.groupBy(group_cols).count().sort('count', ascending=False)
-    window = Window.partitionBy("month").orderBy(col('count').desc())
-    task3 = task3.withColumn("row", row_number().over(window)).filter(col("row") == 1).drop("row")
-    task3.show()
+    task_3(merged_df)
 
     # 4. Які станції входять у трійку лідерів станцій для поїздок кожного дня протягом останніх двох тижнів?
-    print("\n4. Які станції входять у трійку лідерів станцій для поїздок кожного дня протягом останніх двох тижнів?")
-    today = '2020-04-01'
-    date_interval = 14
-    task4 = merged_df.where(col("date") >= today - expr(f"INTERVAL {date_interval} days"))
+    task_4(merged_df)
 
-    task4 = task4.groupby('end_station_name').count().sort('count', ascending=False).drop('count').limit(3)
-    task4 = task4.withColumnRenamed('end_station_name', 'Top 3 stations for trip last 2 weeks')
-    task4.show()
     # 5. Чоловіки чи жінки їздять довше в середньому?
-    print("\n5. Чоловіки чи жінки їздять довше в середньому?")
-    task5 = merged_df.groupby('gender').avg('tripduration').filter(col('gender') != 'NULL').sort('avg(tripduration)', ascending=False)
-    task5.show()
-    """
+    task_5(merged_df)
 
     # 6. Який вік людей входить у десятку лідерів, хто подорожує найдовше та найкоротше?
-    print("\n6. Який вік людей входить у десятку лідерів, хто подорожує найдовше та найкоротше?")
-    temp_df = merged_df.groupby('age').avg('tripduration').filter(col('age') > 0).sort('avg(tripduration)', ascending=False)
-    task5_more = temp_df.limit(10).drop('avg(tripduration)')
-    task5_more = task5_more.withColumnRenamed('age', 'Top 10 ages triping more time')
-    task5_more.show()
-
-    temp_df = temp_df.sort('avg(tripduration)', ascending=True)
-    task5_less = temp_df.limit(10).drop('avg(tripduration)')
-    task5_less = task5_less.withColumnRenamed('age', 'Top 10 ages triping less time')
-    task5_less.show()
+    task_6(merged_df)
 
     clear(temp_dir)
 
