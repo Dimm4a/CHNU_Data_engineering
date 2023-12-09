@@ -77,7 +77,9 @@ def main():
 
     # Розраховую та створюю колонку з віком
     df[0] = df[0].withColumn('age', (year(col('start_time')) - col('birthyear')).cast(IntegerType()))
+    #df[0].filter(col('age') > 80).groupby('age', 'birthyear').count().sort('age', ascending=False).show()
     df[0] = df[0].drop('birthyear')
+
 
     # Створюю відсутні колонки у другій таблиці
     df[1] = df[1].withColumn('gender', lit(None).cast(StringType()))
@@ -94,6 +96,7 @@ def main():
     merged_df = merged_df.withColumn('date', to_date(col("start_time")))
     merged_df = merged_df.drop('start_time', 'end_time')
     #merged_df.show()
+
 
     """
 
@@ -128,14 +131,21 @@ def main():
     task4.show()
     # 5. Чоловіки чи жінки їздять довше в середньому?
     print("\n5. Чоловіки чи жінки їздять довше в середньому?")
-
     task5 = merged_df.groupby('gender').avg('tripduration').filter(col('gender') != 'NULL').sort('avg(tripduration)', ascending=False)
     task5.show()
     """
 
     # 6. Який вік людей входить у десятку лідерів, хто подорожує найдовше та найкоротше?
     print("\n6. Який вік людей входить у десятку лідерів, хто подорожує найдовше та найкоротше?")
+    temp_df = merged_df.groupby('age').avg('tripduration').filter(col('age') > 0).sort('avg(tripduration)', ascending=False)
+    task5_more = temp_df.limit(10).drop('avg(tripduration)')
+    task5_more = task5_more.withColumnRenamed('age', 'Top 10 ages triping more time')
+    task5_more.show()
 
+    temp_df = temp_df.sort('avg(tripduration)', ascending=True)
+    task5_less = temp_df.limit(10).drop('avg(tripduration)')
+    task5_less = task5_less.withColumnRenamed('age', 'Top 10 ages triping less time')
+    task5_less.show()
 
     clear(temp_dir)
 
