@@ -14,6 +14,7 @@ import os
 import shutil
 from pyspark.sql.functions import *
 from pyspark.sql.types import IntegerType, StringType
+from pyspark.sql.window import Window
 
 data_dir = 'data'
 temp_dir = 'temp'
@@ -58,7 +59,7 @@ def main():
     df = []
     for file in file_list:
         df.append(spark.read.option("header", True).csv(file))
-        df[-1].show()
+        #df[-1].show()
         #df[-1].printSchema()
 
     # Видаляю зайві колонки, які не потрібні мені для поточного завдання
@@ -92,50 +93,53 @@ def main():
     # Створюю колонку з датою поїздок та видаляю зайві колонки
     merged_df = merged_df.withColumn('date', to_date(col("start_time")))
     merged_df = merged_df.drop('start_time', 'end_time')
-    merged_df.show()
-
-
-    #merged_df.select(col("gender")).groupby('gender').agg(count("*").alias("count")).filter(df[0].gender != 'NULL').sort('count', ascending=False).show()
-
-    """
-    
-    1. Яка «середня» тривалість поїздки на день?
-    2. Скільки поїздок було здійснено кожного дня?
-    3. Яка була найпопулярніша початкова станція для кожного місяця?
-    4. Які станції входять у трійку лідерів станцій для поїздок кожного дня протягом останніх двох тижнів?
-    5. Чоловіки чи жінки їздять довше в середньому?
-    6. Який вік людей входить у десятку лідерів, хто подорожує найдовше та найкоротше?
-
-
-    df[0].select(col("gender")).groupby('gender').agg(count("*").alias("count")).filter(df[0].gender != 'NULL').sort('count', ascending=False).show()
-
-    print("3. Яка була найпопулярніша початкова станція для кожного місяця?")
-    i = 0
-    for d in df:
-        b = d.select(col("start_station_name")).groupby('start_station_name').agg(count("*").alias("count")).sort(
-            'count', ascending=False)
-        row_list = b.collect()
-        print(csv_basenames[i], row_list[0].__getitem__('start_station_name'))
-        i += 1
-
-    #sorted(df[0].groupBy('sex').agg({'age': 'mean'}).collect())
-    #df[0].groupby('from_station_name').avg().show()
+    #merged_df.show()
 
     """
 
+    # 1. Яка «середня» тривалість поїздки на день?
+    print("\n1. Яка «середня» тривалість поїздки на день?")
+    task1 = merged_df.groupby('date').avg('tripduration').sort('date', ascending=True)
+    task1.show()
 
-    #df[1].withColumn('tripduration', (timestamp_seconds(col("start_time")) - timestamp_seconds(col("end_time")))).show()
-    #df[1].withColumn('tripduration', duration_udf(col("start_time"), col("end_time"))).show()
-    #df[1].withColumn('tripduration', col("ended_at")).show()
+    # 2. Скільки поїздок було здійснено кожного дня?
+    print("\n2. Скільки поїздок було здійснено кожного дня?")
+    task2 = merged_df.groupby('date').count().sort('date', ascending=True)
+    task2.show()
+
+    # 3. Яка була найпопулярніша початкова станція для кожного місяця?
+    print("\n3. Яка була найпопулярніша початкова станція для кожного місяця?")
+    task3 = merged_df.withColumn('month', date_format(col('date'), 'yyyy-MM'))
+    #task3 = task3.drop('end_station_name', 'gender', 'age', 'tripduration', 'date')
+    group_cols = ["month", "start_station_name"]
+    task3 = task3.groupBy(group_cols).count().sort('count', ascending=False)
+    window = Window.partitionBy("month").orderBy(col('count').desc())
+    task3 = task3.withColumn("row", row_number().over(window)).filter(col("row") == 1).drop("row")
+    task3.show()
+
+    # 4. Які станції входять у трійку лідерів станцій для поїздок кожного дня протягом останніх двох тижнів?
+    print("\n4. Які станції входять у трійку лідерів станцій для поїздок кожного дня протягом останніх двох тижнів?")
+    today = '2020-04-01'
+    date_interval = 14
+    task4 = merged_df.where(col("date") >= today - expr(f"INTERVAL {date_interval} days"))
+
+    task4 = task4.groupby('end_station_name').count().sort('count', ascending=False).drop('count').limit(3)
+    task4 = task4.withColumnRenamed('end_station_name', 'Top 3 stations for trip last 2 weeks')
+    task4.show()
+    # 5. Чоловіки чи жінки їздять довше в середньому?
+    print("\n5. Чоловіки чи жінки їздять довше в середньому?")
+
+    task5 = merged_df.groupby('gender').avg('tripduration').filter(col('gender') != 'NULL').sort('avg(tripduration)', ascending=False)
+    task5.show()
+    """
+
+    # 6. Який вік людей входить у десятку лідерів, хто подорожує найдовше та найкоротше?
+    print("\n6. Який вік людей входить у десятку лідерів, хто подорожує найдовше та найкоротше?")
+
+
     clear(temp_dir)
 
-"""
-    df[0].select(col("start_time"),
-            to_date(col("start_time")).alias("date"),
-            to_date(col("end_time")).alias("end date"),
-            #).groupby('date').avg().show()
-            ).groupby('date').avg().show()
-"""
+
 
 if __name__ == "__main__":
     main()
